@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Game with Claude</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .game-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .pokemon-selection {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .pokemon-card {
+            border: 2px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .pokemon-card:hover {
+            transform: scale(1.05);
+            border-color: #4CAF50;
+        }
+        .pokemon-card img {
+            width: 120px;
+            height: 120px;
+            object-fit: contain;
+        }
+        .pokemon-card h3 {
+            margin: 10px 0;
+            color: #333;
+        }
+        .pokemon-card p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .battle-area {
+            display: none;
+            margin-top: 20px;
+        }
+        .pokemon-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .moves-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .move-button {
+            padding: 10px;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .move-button:hover {
+            background-color: #45a049;
+        }
+        .battle-log {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+        .server-messages {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #e9e9e9;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 0.9em;
+            color: #555;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Pokemon Battle with Claude</h1>
+        
+        <div id="pokemon-selection" class="pokemon-selection" style="display: none;">
+            <!-- Pokemon cards will be dynamically added here -->
+        </div>
+
+        <div id="catch-area" style="text-align: center;">
+            <h2>Catch Some Pokemon!</h2>
+            <p>Click the button to try and catch a random Pokemon.</p>
+            <button id="catch-button" onclick="attemptCatch()">Catch Pokemon</button>
+            <div id="catch-result" style="margin-top: 10px;"></div>
+            <div id="caught-list" style="margin-top: 20px;">
+                <h3>Caught Pokemon:</h3>
+                <ul id="caught-pokemon-list"></ul>
+            </div>
+            <button id="start-battle-button" style="display: none; margin-top: 20px;" onclick="showPokemonSelection()">Start Battle</button>
+        </div>
+
+        <div id="battle-area" class="battle-area" style="display: none;">
+            <div class="pokemon-stats">
+                <div id="player-pokemon">
+                    <h3>Your Pokemon</h3>
+                    <img id="player-pokemon-sprite" src="" alt="Player Pokemon Sprite" style="width: 100px; height: 100px;">
+                    <div id="player-stats"></div>
+                </div>
+                <div id="opponent-pokemon">
+                    <h3>Opponent's Pokemon</h3>
+                    <img id="opponent-pokemon-sprite" src="" alt="Opponent Pokemon Sprite" style="width: 100px; height: 100px;">
+                    <div id="opponent-stats"></div>
+                </div>
+            </div>
+            
+            <div class="moves-list" id="moves-list"></div>
+            
+            <div class="battle-log" id="battle-log"></div>
+
+            <div class="server-messages" id="server-messages">
+                <h3>Server Messages:</h3>
+                <ul id="server-message-list"></ul>
+            </div>
+        </div>
+
+        <div id="game-over-message" style="display: none; text-align: center; margin-top: 20px;">
+            <h2 id="winner-text"></h2>
+            <button onclick="window.location.reload()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentPokemon = null;
+        let opponentPokemon = null;
+        let caughtPokemon = []; // Keep track of caught Pokemon in the frontend
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connection established');
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === "game_state") {
+                    currentPokemon = data.player_pokemon;
+                    opponentPokemon = data.opponent_pokemon;
+                    showBattleArea();
+
+                    // Display Pokemon sprites
+                    document.getElementById('player-pokemon-sprite').src = currentPokemon.sprites.front_default || '';
+                    document.getElementById('opponent-pokemon-sprite').src = opponentPokemon.sprites.front_default || '';
+
+                    // Update player stats with current HP
+                    document.getElementById('player-stats').innerHTML = `
+                        <p>Name: ${currentPokemon.name}</p>
+                        <p>HP: ${currentPokemon.hp}</p>
+                        <p>Attack: ${currentPokemon.stats.find(stat => stat.stat.name === 'attack').base_stat}</p>
+                        <p>Defense: ${currentPokemon.stats.find(stat => stat.stat.name === 'defense').base_stat}</p>
+                    `;
+
+                    // Update opponent stats with current HP
+                    document.getElementById('opponent-stats').innerHTML = `
+                        <p>Name: ${opponentPokemon.name}</p>
+                        <p>HP: ${opponentPokemon.hp}</p>
+                        <p>Attack: ${opponentPokemon.stats.find(stat => stat.stat.name === 'attack').base_stat}</p>
+                        <p>Defense: ${opponentPokemon.stats.find(stat => stat.stat.name === 'defense').base_stat}</p>
+                    `;
+
+                    // Add battle description to log if available
+                    if (data.description) {
+                        addToBattleLog(data.description);
+                    }
+
+                    // Check for winner and display message
+                    if (data.winner) {
+                        const winnerTextElement = document.getElementById('winner-text');
+                        if (data.winner === "Player") {
+                            winnerTextElement.textContent = "You won the battle!";
+                        } else if (data.winner === "Opponent") {
+                            winnerTextElement.textContent = "You lost the battle!";
+                        }
+                        document.getElementById('battle-area').style.display = 'none';
+                        document.getElementById('game-over-message').style.display = 'block';
+                    }
+
+                } else if (data.type === "attack_response") {
+                    addToBattleLog(data.description);
+                } else if (data.type === "error") {
+                    if (data.message.includes("Maximum team size")) {
+                        alert("You can only have 6 Pokemon in your team!");
+                    } else {
+                        alert(data.message);
+                    }
+                    const catchButton = document.getElementById('catch-button');
+                    catchButton.disabled = false;
+                    catchButton.textContent = 'Catch Pokemon';
+                } else if (data.type === "catch_result") {
+                    addToBattleLog(`You caught a ${data.caught_pokemon}!`);
+                    caughtPokemon = data.caught_list;
+                    updateCaughtList();
+                } else if (data.type === "server_log") {
+                    addToServerMessageLog(data.message);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket connection closed. Reconnecting...');
+                setTimeout(connectWebSocket, 1000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function selectPokemon(pokemonName) {
+            // Find the selected pokemon object in the caught list
+            const selectedPokemon = caughtPokemon.find(p => p.name === pokemonName);
+
+            if (!selectedPokemon) {
+                alert(`You haven't caught ${pokemonName} yet!`);
+                return;
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "select_pokemon",
+                    pokemon: pokemonName // Send the name to the backend
+                }));
+            }
+        }
+
+        function attemptCatch() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const catchButton = document.getElementById('catch-button');
+                catchButton.disabled = true;
+                catchButton.textContent = 'Catching...';
+                
+                ws.send(JSON.stringify({
+                    type: "catch_attempt"
+                }));
+            } else {
+                alert('Connection lost. Please refresh the page.');
+            }
+        }
+
+        function updateCaughtList() {
+            const caughtListElement = document.getElementById('caught-pokemon-list');
+            caughtListElement.innerHTML = ''; // Clear the current list
+            
+            if (caughtPokemon.length === 0) {
+                caughtListElement.innerHTML = '<li>None yet!</li>';
+            } else {
+                caughtPokemon.forEach(pokemon => {
+                    const card = document.createElement('div');
+                    card.className = 'pokemon-card';
+                    
+                    // Find HP, Attack, Defense stats
+                    let hp = 0, attack = 0, defense = 0;
+                    if (pokemon.stats) {
+                        pokemon.stats.forEach(stat => {
+                            if (stat.stat.name === 'hp') hp = stat.base_stat;
+                            if (stat.stat.name === 'attack') attack = stat.base_stat;
+                            if (stat.stat.name === 'defense') defense = stat.base_stat;
+                        });
+                    }
+                    
+                    card.innerHTML = `
+                        <img src="${pokemon.sprites.front_default}" alt="${pokemon.name}">
+                        <h3>${pokemon.name}</h3>
+                        <p>HP: ${hp}</p>
+                        <p>Attack: ${attack}</p>
+                        <p>Defense: ${defense}</p>
+                    `;
+                    caughtListElement.appendChild(card);
+                });
+            }
+            
+            // Re-enable catch button
+            const catchButton = document.getElementById('catch-button');
+            catchButton.disabled = false;
+            catchButton.textContent = 'Catch Pokemon';
+            
+            // Show/hide start battle button
+            const startBattleButton = document.getElementById('start-battle-button');
+            startBattleButton.style.display = caughtPokemon.length > 0 ? 'block' : 'none';
+        }
+
+        function showPokemonSelection() {
+            document.getElementById('catch-area').style.display = 'none';
+            document.getElementById('pokemon-selection').style.display = 'grid';
+            renderSelectablePokemon(); // Render the caught pokemon for selection
+        }
+
+        function renderSelectablePokemon() {
+            const selectionArea = document.getElementById('pokemon-selection');
+            selectionArea.innerHTML = ''; // Clear previous selection options
+
+            if (caughtPokemon.length === 0) {
+                selectionArea.innerHTML = '<p>No Pokemon caught yet!</p>';
+                return;
+            }
+
+            caughtPokemon.forEach(pokemon => {
+                const pokemonCard = document.createElement('div');
+                pokemonCard.classList.add('pokemon-card');
+                pokemonCard.onclick = () => selectPokemon(pokemon.name);
+
+                // Find HP, Attack, Defense stats
+                let hp = 0, attack = 0, defense = 0;
+                if (pokemon.stats) {
+                     pokemon.stats.forEach(stat => {
+                        if (stat.stat.name === 'hp') hp = stat.base_stat;
+                        if (stat.stat.name === 'attack') attack = stat.base_stat;
+                        if (stat.stat.name === 'defense') defense = stat.base_stat;
+                    });
+                }
+
+                pokemonCard.innerHTML = `
+                    <img src="${pokemon.sprites.front_default}" alt="${pokemon.name}">
+                    <h3>${pokemon.name}</h3>
+                    <p>HP: ${hp}</p>
+                    <p>Attack: ${attack}</p>
+                    <p>Defense: ${defense}</p>
+                `;
+                selectionArea.appendChild(pokemonCard);
+            });
+        }
+
+        function showBattleArea() {
+            document.getElementById('pokemon-selection').style.display = 'none';
+            document.getElementById('battle-area').style.display = 'block';
+            
+            // Clear the battle log
+            const battleLog = document.getElementById('battle-log');
+            battleLog.innerHTML = '';
+            
+            // Create move buttons
+            const movesList = document.getElementById('moves-list');
+            movesList.innerHTML = '';
+            currentPokemon.moves.forEach(move => {
+                const button = document.createElement('button');
+                button.className = 'move-button';
+                button.textContent = move;
+                button.onclick = () => useMove(move);
+                movesList.appendChild(button);
+            });
+        }
+
+        function useMove(move) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: "attack",
+                    move: move
+                }));
+            }
+        }
+
+        function addToBattleLog(message) {
+            const battleLog = document.getElementById('battle-log');
+            const logEntry = document.createElement('p');
+            logEntry.textContent = message;
+            battleLog.appendChild(logEntry);
+            battleLog.scrollTop = battleLog.scrollHeight;
+        }
+
+        function addToServerMessageLog(message) {
+            const serverMessageList = document.getElementById('server-message-list');
+            const listItem = document.createElement('li');
+            listItem.textContent = message;
+            serverMessageList.appendChild(listItem);
+            serverMessageList.scrollTop = serverMessageList.scrollHeight;
+        }
+
+        // Initial WebSocket connection
+        connectWebSocket();
+    </script>
+</body>
+</html> 
