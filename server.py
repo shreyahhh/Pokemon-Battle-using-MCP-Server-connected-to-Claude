@@ -3,13 +3,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
-import anthropic # Import Anthropic library
 import os
 import json
-from dotenv import load_dotenv, dotenv_values
+from dotenv import load_dotenv
 from typing import Dict, List, Any
 import asyncio
-import httpx # Import httpx for making asynchronous HTTP requests
+import httpx
+from mcp_client import MCPClient
 
 # Load environment variables
 load_dotenv('api.env')
@@ -20,25 +20,10 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=".")
 
-# Load Anthropic API key
-anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-
-# Fallback: Try reading from api.env if not set as environment variable
-if not anthropic_api_key:
-    config = dotenv_values('api.env')
-    if config and "ANTHROPIC_API_KEY" in config:
-        anthropic_api_key = config["ANTHROPIC_API_KEY"]
-
-if not anthropic_api_key or anthropic_api_key == "your-anthropic-api-key":
-    raise ValueError("ANTHROPIC_API_KEY environment variable is not set and not found in api.env")
-
-# Log the API key being used (masking most of it for security)
-print(f"Using Anthropic API Key: ...{anthropic_api_key[-5:]}")
-
-# Initialize Anthropic client
-client = anthropic.Anthropic(api_key=anthropic_api_key)
+# Initialize MCP client
+mcp_client = MCPClient(base_url="http://localhost:8000")
 
 # PokeAPI base URL
 POKEAPI_BASE_URL = "https://pokeapi.co/api/v2"
@@ -211,17 +196,67 @@ async def websocket_endpoint(websocket: WebSocket):
                     caught_data = await game.catch_pokemon()
                     if caught_data:
                         print(f"Successfully caught Pokemon: {caught_data['name']}")
+                        
+                        # Generate personality/backstory using MCP
+                        personality_prompt = f"Generate a very short, quirky personality trait or backstory for a {caught_data['name']} Pokemon.\nExample: Likes collecting shiny stones."
+                        print(f"Attempting to generate personality for {caught_data['name']} with prompt: {personality_prompt}") # Add logging
+                        try:
+                            personality = await mcp_client.generate_content(
+                                prompt=personality_prompt,
+                                model="claude-3-opus-20240229", # Or another suitable model
+                                max_tokens=50 # Keep it concise
+                            )
+                            print(f"Generated personality: {personality}") # Add logging
+                            caught_data['personality'] = personality
+                        except Exception as e:
+                            print(f"Error generating personality: {e}")
+                            caught_data['personality'] = "A mysterious Pokemon."
+
                         await websocket.send_json({
                             "type": "catch_result",
                             "caught_pokemon": caught_data['name'],
-                            "caught_list": game.caught_pokemon
+                            "caught_list": game.caught_pokemon,
+                            "newly_caught_personality": caught_data.get('personality', "") # Include personality
                         })
                     else:
                         print("Failed to catch Pokemon - caught_data is None")
                         await websocket.send_json({"type": "error", "message": "Failed to catch a pokemon."})
                 except Exception as e:
                     print(f"Error during catch attempt: {str(e)}")
-                    await websocket.send_json({"type": "error", "message": f"An error occurred while catching: {str(e)}"})
+                    await websocket.send_json({"type": "error", "message": f"An error occurred while catching: {str(e)}"})    
+            
+            elif message["type"] == "get_recommendation":
+                try:
+                    game = game_states[client_id]["game"]
+                    player_pokemon = game.current_pokemon
+                    opponent_pokemon = game.opponent_pokemon
+
+                    if not player_pokemon or not opponent_pokemon:
+                        await websocket.send_json({"type": "error", "message": "Cannot get recommendation: Pokemon not selected or opponent not ready."})
+                        return
+
+                    # Construct prompt for attack recommendation
+                    recommendation_prompt = f"Given the following Pokemon battle scenario: Your Pokemon, {player_pokemon['name']} (HP: {player_pokemon.get('hp', 'unknown')}), is fighting against opponent's {opponent_pokemon['name']} (HP: {opponent_pokemon.get('hp', 'unknown')}). Your available moves are: {player_pokemon.get('moves', [])}. Based on typical Pokemon battles, which of your moves would be most effective in this situation? Provide ONLY the move name as the first word of your response, followed by a very brief reason.\nExample: Tackle because it's a basic reliable move."
+
+                    await websocket.send_json({"type": "server_log", "message": "Server: Requesting attack recommendation from MCP..."})
+                    
+                    recommendation = await mcp_client.generate_content(
+                        prompt=recommendation_prompt,
+                        model="claude-3-opus-20240229", # Or another suitable model
+                        max_tokens=100 # Keep the response concise
+                    )
+                    
+                    await websocket.send_json({"type": "server_log", "message": f"Server: Recommendation received: {recommendation[:50]}..."})
+                    
+                    # Send the recommendation back to the client
+                    await websocket.send_json({
+                        "type": "recommendation",
+                        "recommended_move": recommendation
+                    })
+
+                except Exception as e:
+                    print(f"Error getting recommendation: {str(e)}")
+                    await websocket.send_json({"type": "error", "message": f"An error occurred while getting recommendation: {str(e)}"})
             
             elif message["type"] == "attack":
                 try:
@@ -258,22 +293,19 @@ async def websocket_endpoint(websocket: WebSocket):
                     api_description = description_for_api # Default description
 
                     # Call OpenAI API for creative description if no winner yet
-                    if client and not winner:
+                    if mcp_client and not winner:
                         try:
-                            await websocket.send_json({"type": "server_log", "message": "Server: Making Anthropic API call for battle description..."})
-                            response = client.messages.create(
-                                model="claude-3-opus-20240229", # Using a recent Claude model
-                                max_tokens=100,
-                                messages=[
-                                    {"role": "user", "content": f"Describe this Pokemon attack creatively, as a commentator: {description_for_api}"}
-                                ]
+                            await websocket.send_json({"type": "server_log", "message": "Server: Making MCP call for battle description..."})
+                            response = await mcp_client.generate_content(
+                                prompt=description_for_api,
+                                model="claude-3-opus-20240229",
+                                temperature=0.7
                             )
-                            await websocket.send_json({"type": "server_log", "message": f"Server: Anthropic API response received: {response.content[0].text[:50]}..."}) # Log part of the response
-                            if response and response.content and len(response.content) > 0 and response.content[0].text:
-                                api_description = response.content[0].text
+                            await websocket.send_json({"type": "server_log", "message": f"Server: MCP response received: {response[:50]}..."})
+                            if response:
+                                api_description = response
                         except Exception as api_error:
-                            await websocket.send_json({"type": "server_log", "message": f"Server: Error calling Anthropic API: {api_error}"})
-                            # If API fails, revert to the basic description
+                            await websocket.send_json({"type": "server_log", "message": f"Server: Error calling MCP: {api_error}"})
                             api_description = description_for_api
 
                     # Prepare and send the final game state payload
@@ -302,4 +334,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8080) 

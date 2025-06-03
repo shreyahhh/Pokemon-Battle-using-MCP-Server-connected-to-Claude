@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pokemon Game with Claude</title>
+    <title>Poké-Battle</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -72,6 +72,7 @@
             color: white;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 1em; /* Default size */
         }
         .move-button:hover {
             background-color: #45a049;
@@ -96,11 +97,92 @@
             max-height: 100px;
             overflow-y: auto;
         }
+
+        /* Styles for Detailed Catch Result */
+        #detailed-catch-result {
+            display: block; /* Revert to block layout */
+            margin: 20px auto; /* Center the container */
+            max-width: 300px; /* Set a max width for the card */
+            border: 1px solid #ddd; /* Add border back */
+            padding: 15px; /* Add padding back */
+            border-radius: 8px; /* Add border-radius back */
+            background-color: #f9f9f9; /* Add background back */
+            text-align: center; /* Center content horizontally */
+        }
+        #detailed-catch-result > div {
+             /* Removed flex styles for inner divs */
+             border: none; /* Remove inner card borders */
+             padding: 0; /* Remove inner card padding */
+             background-color: transparent; /* Make inner card background transparent */
+        }
+        #caught-pokemon-image-card {
+            /* Removed styles specific to side-by-side layout */
+             display: block; /* Revert to block layout for image container */
+             margin: 0 auto 10px auto; /* Center image and add space below */
+        }
+        #caught-pokemon-sprite-display {
+            width: 100%; /* Image takes full width of its container */
+            max-width: 150px; /* Max size for the image in stacked layout */
+            height: auto; /* Maintain aspect ratio */
+            object-fit: contain;
+             display: block; /* Ensure image is a block for centering */
+             margin: 0 auto; /* Center the image itself */
+        }
+        #caught-pokemon-details {
+            text-align: center; /* Center text within the details div */
+        }
+        #caught-pokemon-name-display {
+            margin-top: 0; 
+            margin-bottom: 5px; 
+            color: #333;
+        }
+        #caught-pokemon-stats-display p {
+             margin: 2px 0; 
+             color: #555;
+        }
+        #caught-pokemon-personality-display {
+            font-style: italic;
+            margin-top: 10px;
+            color: #666;
+        }
+
+        /* Game Button Styling */
+        .game-button {
+            padding: 12px 20px; 
+            border: none;
+            background-color: #007bff; 
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1.1em; 
+            margin: 10px auto; 
+            display: block; 
+            transition: background-color 0.3s ease;
+        }
+        .game-button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Specific centering for start battle button */
+        #start-battle-button {
+            display: block; 
+            margin: 20px auto; 
+        }
+
+        /* Style for the caught Pokemon list to remove bullets */
+        #caught-pokemon-list {
+            list-style: none; 
+            padding: 0; 
+        }
+        #caught-pokemon-list li {
+            margin-bottom: 5px; 
+        }
+
     </style>
 </head>
 <body>
     <div class="game-container">
-        <h1>Pokemon Battle with Claude</h1>
+        <h1>Poké-Battle</h1>
         
         <div id="pokemon-selection" class="pokemon-selection" style="display: none;">
             <!-- Pokemon cards will be dynamically added here -->
@@ -108,14 +190,23 @@
 
         <div id="catch-area" style="text-align: center;">
             <h2>Catch Some Pokemon!</h2>
-            <p>Click the button to try and catch a random Pokemon.</p>
-            <button id="catch-button" onclick="attemptCatch()">Catch Pokemon</button>
-            <div id="catch-result" style="margin-top: 10px;"></div>
+            
+            <button id="catch-button" class="game-button" onclick="attemptCatch()">Catch Pokemon</button>
+            <!-- Detailed Catch Result Display (Stacked Layout) -->
+            <div id="detailed-catch-result" style="display: none;">
+                 <img id="caught-pokemon-sprite-display" src="" alt="Caught Pokemon Sprite">
+                 <div id="caught-pokemon-details"> <!-- Container for name, stats, personality -->
+                     <h3 id="caught-pokemon-name-display"></h3>
+                     <div id="caught-pokemon-stats-display"></div>
+                     <p id="caught-pokemon-personality-display"></p>
+                 </div>
+            </div>
             <div id="caught-list" style="margin-top: 20px;">
-                <h3>Caught Pokemon:</h3>
+                <h3>My Pokemons:</h3>
                 <ul id="caught-pokemon-list"></ul>
             </div>
-            <button id="start-battle-button" style="display: none; margin-top: 20px;" onclick="showPokemonSelection()">Start Battle</button>
+            <!-- Start Battle Button centered -->
+            <button id="start-battle-button" class="game-button" style="display: none;" onclick="showPokemonSelection()">Start Battle</button>
         </div>
 
         <div id="battle-area" class="battle-area" style="display: none;">
@@ -134,6 +225,12 @@
             
             <div class="moves-list" id="moves-list"></div>
             
+            <!-- Attack Recommendation Section -->
+            <div style="margin-top: 20px;">
+                <button onclick="requestRecommendation()">Get Attack Recommendation</button>
+                <p id="recommendation-text" style="margin-top: 10px; font-style: italic;"></p>
+            </div>
+
             <div class="battle-log" id="battle-log"></div>
 
             <div class="server-messages" id="server-messages">
@@ -208,22 +305,69 @@
                     }
 
                 } else if (data.type === "attack_response") {
+                    // This message type is not used in the current backend, 
+                    // but keeping it here in case it's part of original frontend
                     addToBattleLog(data.description);
+
                 } else if (data.type === "error") {
                     if (data.message.includes("Maximum team size")) {
                         alert("You can only have 6 Pokemon in your team!");
                     } else {
                         alert(data.message);
                     }
+                    // Always re-enable catch button on error
                     const catchButton = document.getElementById('catch-button');
                     catchButton.disabled = false;
                     catchButton.textContent = 'Catch Pokemon';
+
                 } else if (data.type === "catch_result") {
                     addToBattleLog(`You caught a ${data.caught_pokemon}!`);
                     caughtPokemon = data.caught_list;
-                    updateCaughtList();
+                    updateCaughtList(); // Update the list below
+                    
+                    // Display detailed catch result
+                    const detailedResultDiv = document.getElementById('detailed-catch-result');
+                    const spriteDisplay = document.getElementById('caught-pokemon-sprite-display');
+                    const nameDisplay = document.getElementById('caught-pokemon-name-display');
+                    const statsDisplay = document.getElementById('caught-pokemon-stats-display');
+                    const personalityDisplay = document.getElementById('caught-pokemon-personality-display');
+
+                    const newlyCaught = caughtPokemon.find(p => p.name === data.caught_pokemon); // Find the newly caught pokemon in the updated list
+
+                    if(newlyCaught) {
+                         spriteDisplay.src = newlyCaught.sprites.front_default || '';
+                         spriteDisplay.style.display = 'block';
+                         nameDisplay.textContent = newlyCaught.name;
+                         
+                         let hp = 0, attack = 0, defense = 0;
+                         if (newlyCaught.stats) {
+                              newlyCaught.stats.forEach(stat => {
+                                  if (stat.stat.name === 'hp') hp = stat.base_stat;
+                                  if (stat.stat.name === 'attack') attack = stat.base_stat;
+                                  if (stat.stat.name === 'defense') defense = stat.base_stat;
+                              });
+                         }
+                         statsDisplay.innerHTML = `
+                             <p>HP: ${hp}</p>
+                             <p>Attack: ${attack}</p>
+                             <p>Defense: ${defense}</p>
+                         `;
+                         personalityDisplay.textContent = data.newly_caught_personality || "A mysterious Pokemon.";
+
+                         detailedResultDiv.style.display = 'block'; // Show the detailed result area
+                    }
+
+                    // Always re-enable catch button after a catch attempt
+                    const catchButton = document.getElementById('catch-button');
+                    catchButton.disabled = false;
+                    catchButton.textContent = 'Catch Pokemon';
+
                 } else if (data.type === "server_log") {
                     addToServerMessageLog(data.message);
+
+                } else if (data.type === "recommendation") { // Handle new recommendation message
+                    const recommendationTextElement = document.getElementById('recommendation-text');
+                    recommendationTextElement.textContent = `Recommendation: ${data.recommended_move}`;
                 }
             };
 
@@ -270,44 +414,30 @@
 
         function updateCaughtList() {
             const caughtListElement = document.getElementById('caught-pokemon-list');
-            caughtListElement.innerHTML = ''; // Clear the current list
-            
-            if (caughtPokemon.length === 0) {
-                caughtListElement.innerHTML = '<li>None yet!</li>';
+            caughtListElement.innerHTML = ''; // Clear current list
+            caughtPokemon.forEach(pokemon => {
+                const listItem = document.createElement('li');
+                // Removed HP: null from the list item text
+                listItem.textContent = pokemon.name; 
+                
+                // Add personality if available
+                if (pokemon.personality) {
+                    const personalitySpan = document.createElement('span');
+                    personalitySpan.style.fontStyle = 'italic';
+                    personalitySpan.style.marginLeft = '10px';
+                    personalitySpan.textContent = `- ${pokemon.personality}`;
+                    listItem.appendChild(personalitySpan);
+                }
+                listItem.style.cursor = 'pointer';
+                listItem.onclick = () => selectPokemon(pokemon.name);
+                caughtListElement.appendChild(listItem);
+            });
+             // Show start battle button if at least one pokemon is caught
+            if (caughtPokemon.length > 0) {
+                document.getElementById('start-battle-button').style.display = 'block';
             } else {
-                caughtPokemon.forEach(pokemon => {
-                    const card = document.createElement('div');
-                    card.className = 'pokemon-card';
-                    
-                    // Find HP, Attack, Defense stats
-                    let hp = 0, attack = 0, defense = 0;
-                    if (pokemon.stats) {
-                        pokemon.stats.forEach(stat => {
-                            if (stat.stat.name === 'hp') hp = stat.base_stat;
-                            if (stat.stat.name === 'attack') attack = stat.base_stat;
-                            if (stat.stat.name === 'defense') defense = stat.base_stat;
-                        });
-                    }
-                    
-                    card.innerHTML = `
-                        <img src="${pokemon.sprites.front_default}" alt="${pokemon.name}">
-                        <h3>${pokemon.name}</h3>
-                        <p>HP: ${hp}</p>
-                        <p>Attack: ${attack}</p>
-                        <p>Defense: ${defense}</p>
-                    `;
-                    caughtListElement.appendChild(card);
-                });
+                 document.getElementById('start-battle-button').style.display = 'none';
             }
-            
-            // Re-enable catch button
-            const catchButton = document.getElementById('catch-button');
-            catchButton.disabled = false;
-            catchButton.textContent = 'Catch Pokemon';
-            
-            // Show/hide start battle button
-            const startBattleButton = document.getElementById('start-battle-button');
-            startBattleButton.style.display = caughtPokemon.length > 0 ? 'block' : 'none';
         }
 
         function showPokemonSelection() {
@@ -381,19 +511,30 @@
         }
 
         function addToBattleLog(message) {
-            const battleLog = document.getElementById('battle-log');
-            const logEntry = document.createElement('p');
-            logEntry.textContent = message;
-            battleLog.appendChild(logEntry);
-            battleLog.scrollTop = battleLog.scrollHeight;
+            const logElement = document.getElementById('battle-log');
+            const p = document.createElement('p');
+            p.textContent = message;
+            logElement.appendChild(p);
+            logElement.scrollTop = logElement.scrollHeight; // Auto-scroll to bottom
         }
 
         function addToServerMessageLog(message) {
-            const serverMessageList = document.getElementById('server-message-list');
+            const logListElement = document.getElementById('server-message-list');
             const listItem = document.createElement('li');
             listItem.textContent = message;
-            serverMessageList.appendChild(listItem);
-            serverMessageList.scrollTop = serverMessageList.scrollHeight;
+            logListElement.appendChild(listItem);
+            logListElement.scrollTop = logListElement.scrollHeight; // Auto-scroll to bottom
+        }
+
+        // New function to request attack recommendation
+        function requestRecommendation() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({"type": "get_recommendation"}));
+                document.getElementById('recommendation-text').textContent = 'Getting recommendation...';
+            } else {
+                console.error('WebSocket is not connected.');
+                document.getElementById('recommendation-text').textContent = 'Could not connect to server for recommendation.';
+            }
         }
 
         // Initial WebSocket connection
