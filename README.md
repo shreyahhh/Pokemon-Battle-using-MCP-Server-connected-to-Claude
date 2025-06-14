@@ -2,8 +2,10 @@
 
 This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Claude AI for creative battle descriptions, attack recommendations, and generating unique personalities for caught Pokemon.
 
-![Catch Pokemon](https://github.com/user-attachments/assets/64a67e70-835f-4204-a1a1-f646da326d3f)
-![Battle Field](https://github.com/user-attachments/assets/16fcb685-5aaf-4969-acc2-146066ea0daa)
+<div style="display: flex; gap: 10px;">
+  <img src="https://github.com/user-attachments/assets/64a67e70-835f-4204-a1a1-f646da326d3f" alt="Catch Pokemon" width="300"/>
+  <img src="https://github.com/user-attachments/assets/16fcb685-5aaf-4969-acc2-146066ea0daa" alt="Battle Field" width="300"/>
+</div>
 
 
 ## Tech Stack
