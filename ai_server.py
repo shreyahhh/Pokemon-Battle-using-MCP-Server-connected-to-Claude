@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 # Load environment variables
 load_dotenv('api.env')
 
-app = FastAPI(title="MCP Server")
+app = FastAPI(title="AI Server")
 
 # Add CORS middleware
 app.add_middleware(
@@ -43,7 +43,7 @@ class ModelResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "MCP Server is running"}
+    return {"message": "AI Server is running"}
 
 @app.post("/generate", response_model=ModelResponse)
 async def generate_content(request: ModelRequest):

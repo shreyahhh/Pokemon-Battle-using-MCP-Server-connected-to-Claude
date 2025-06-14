@@ -1,11 +1,11 @@
 # Poké-Battle
 
-This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Claude AI through a custom Model Context Protocol (MCP) server and client. It features real-time battles and utilizes AI for creative battle descriptions, attack recommendations, and generating unique personalities for caught Pokemon.
+This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Claude AI for creative battle descriptions, attack recommendations, and generating unique personalities for caught Pokemon.
 
 ## Tech Stack
 
 *   **Backend:** FastAPI, Uvicorn (ASGI server)
-*   **AI Integration:** Anthropic's Claude API, custom Model Context Protocol (MCP) server (`mcp_server.py`) and client (`mcp_client.py`)
+*   **AI Integration:** Anthropic's Claude API, custom AI server (`ai_server.py`) and client (`ai_client.py`)
 *   **External API:** PokeAPI
 *   **Frontend:** HTML, CSS, JavaScript (served by FastAPI)
 *   **Dependencies:** python-dotenv, httpx, websockets, Jinja2
@@ -46,10 +46,10 @@ This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Cla
         ```
     **Note:** For security, it's recommended to manage API keys using environment variables provided by your hosting environment rather than storing them in a `.env` file, especially in production.
 
-6.  **Run the MCP Server:**
+6.  **Run the AI Server:**
     Open your terminal in the project root and run:
     ```bash
-    uvicorn mcp_server:app --reload --port 8000
+    uvicorn ai_server:app --reload --port 8000
     ```
 
 7.  **Run the Main Game Server:**
@@ -64,8 +64,8 @@ This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Cla
 ## Project Structure
 
 *   `server.py`: Main FastAPI application handling game logic and serving the frontend.
-*   `mcp_server.py`: FastAPI application acting as the Model Context Protocol server, handling communication with the Anthropic API.
-*   `mcp_client.py`: Python client library used by `server.py` to communicate with `mcp_server.py`.
+*   `ai_server.py`: FastAPI application handling communication with the Anthropic API.
+*   `ai_client.py`: Python client library used by `server.py` to communicate with `ai_server.py`.
 *   `index.html`: The main frontend HTML file.
 *   `static/`: Directory for static assets (CSS, JavaScript, images - although currently only the directory is present).
 *   `requirements.txt`: Lists the Python dependencies.
@@ -80,5 +80,4 @@ This is a Pokemon game built with FastAPI and Python, leveraging Anthropic's Cla
 *   **AI Attack Recommendations:** Get AI suggestions for the best move to use in battle.
 *   **AI Pokemon Personalities:** Each caught Pokemon gets a unique, AI-generated personality trait or backstory.
 *   **Real-time Updates:** Game state and messages updated via WebSocket.
-*   **MCP Implementation:** Demonstrates using a Model Context Protocol for AI model interaction.
 *   **Responsive UI:** Basic UI adjustments for better display of caught Pokemon. 

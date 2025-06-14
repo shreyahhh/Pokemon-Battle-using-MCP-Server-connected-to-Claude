@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from typing import Dict, List, Any
 import asyncio
 import httpx
-from mcp_client import MCPClient
+from ai_client import AIClient
 
 # Load environment variables
 load_dotenv('api.env')
@@ -22,8 +22,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Templates
 templates = Jinja2Templates(directory=".")
 
-# Initialize MCP client
-mcp_client = MCPClient(base_url="http://localhost:8000")
+# Initialize AI client
+ai_client = AIClient(base_url="http://localhost:8000")
 
 # PokeAPI base URL
 POKEAPI_BASE_URL = "https://pokeapi.co/api/v2"
@@ -197,11 +197,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     if caught_data:
                         print(f"Successfully caught Pokemon: {caught_data['name']}")
                         
-                        # Generate personality/backstory using MCP
+                        # Generate personality/backstory using AI
                         personality_prompt = f"Generate a very short, quirky personality trait or backstory for a {caught_data['name']} Pokemon.\nExample: Likes collecting shiny stones."
                         print(f"Attempting to generate personality for {caught_data['name']} with prompt: {personality_prompt}") # Add logging
                         try:
-                            personality = await mcp_client.generate_content(
+                            personality = await ai_client.generate_content(
                                 prompt=personality_prompt,
                                 model="claude-3-opus-20240229", # Or another suitable model
                                 max_tokens=50 # Keep it concise
@@ -238,9 +238,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Construct prompt for attack recommendation
                     recommendation_prompt = f"Given the following Pokemon battle scenario: Your Pokemon, {player_pokemon['name']} (HP: {player_pokemon.get('hp', 'unknown')}), is fighting against opponent's {opponent_pokemon['name']} (HP: {opponent_pokemon.get('hp', 'unknown')}). Your available moves are: {player_pokemon.get('moves', [])}. Based on typical Pokemon battles, which of your moves would be most effective in this situation? Provide ONLY the move name as the first word of your response, followed by a very brief reason.\nExample: Tackle because it's a basic reliable move."
 
-                    await websocket.send_json({"type": "server_log", "message": "Server: Requesting attack recommendation from MCP..."})
+                    await websocket.send_json({"type": "server_log", "message": "Server: Requesting attack recommendation from AI..."})
                     
-                    recommendation = await mcp_client.generate_content(
+                    recommendation = await ai_client.generate_content(
                         prompt=recommendation_prompt,
                         model="claude-3-opus-20240229", # Or another suitable model
                         max_tokens=100 # Keep the response concise
@@ -292,20 +292,20 @@ async def websocket_endpoint(websocket: WebSocket):
                     description_for_api = "\n".join(battle_messages)
                     api_description = description_for_api # Default description
 
-                    # Call OpenAI API for creative description if no winner yet
-                    if mcp_client and not winner:
+                    # Call AI API for creative description if no winner yet
+                    if ai_client and not winner:
                         try:
-                            await websocket.send_json({"type": "server_log", "message": "Server: Making MCP call for battle description..."})
-                            response = await mcp_client.generate_content(
+                            await websocket.send_json({"type": "server_log", "message": "Server: Making AI call for battle description..."})
+                            response = await ai_client.generate_content(
                                 prompt=description_for_api,
                                 model="claude-3-opus-20240229",
                                 temperature=0.7
                             )
-                            await websocket.send_json({"type": "server_log", "message": f"Server: MCP response received: {response[:50]}..."})
+                            await websocket.send_json({"type": "server_log", "message": f"Server: AI response received: {response[:50]}..."})
                             if response:
                                 api_description = response
                         except Exception as api_error:
-                            await websocket.send_json({"type": "server_log", "message": f"Server: Error calling MCP: {api_error}"})
+                            await websocket.send_json({"type": "server_log", "message": f"Server: Error calling AI: {api_error}"})
                             api_description = description_for_api
 
                     # Prepare and send the final game state payload
